@@ -120,7 +120,7 @@ def pick_peaks_times(nc, beat_times, avg_future=12, avg_past=12, max_future=12, 
 
 
 
-def post_process(audio_file, beat_times, duration, bound_curve, class_curves):
+def post_process(audio_file, beat_times, duration, bound_curve, class_curves, jsd_model=True):
 
     # We stack adjacent frames for boundary predictions, so we average adjacent beat times
     beat_times = [(beat_times[i] + beat_times[i+1])/2 for i in range(len(beat_times)-1)]
@@ -156,7 +156,7 @@ def post_process(audio_file, beat_times, duration, bound_curve, class_curves):
 
     est_idxs = [0] + [beat_times[int(i)] for i in est_idxs] + [duration]
 
-    if 'JSD' in audio_file:
+    if jsd_model:
         est_labels = convert_labels_JSD(est_labels)
     else:
         est_labels = convert_labels(est_labels)

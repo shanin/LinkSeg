@@ -13,3 +13,4 @@ torchmetrics==1.4.2
 tqdm==4.66.5
 ujson==5.10.0
 pydub==0.25.1
+cython==3.0.11

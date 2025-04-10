@@ -124,12 +124,17 @@ def predict_from_files(args):
                 # compute the predictions
                 embeddings, bound_curve, class_curves, A_pred = model(x)
                 # save embeddings to numpy file
+
                 if args.save_embeddings:
+                    # Create predictions subfolder if it doesn't exist
+                    predictions_dir = os.path.dirname(file_struct.predictions_file)
+                    os.makedirs(predictions_dir, exist_ok=True)
                     embeddings_file = str(file_struct.predictions_file).split('.jams')[0] + '_embeddings.npy'
                     print('Saving embeddings to', embeddings_file)
                     np.save(embeddings_file, embeddings.cpu().numpy())
+
                 # post-process predictions (peak picking & majority vote)
-                est_times, est_labels = post_process(file, beat_times, duration, bound_curve, class_curves)
+                est_times, est_labels = post_process(file, beat_times, duration, bound_curve, class_curves, jsd_model=args.jsd_model)
                 # write predictions to jams format
                 print(est_times, est_labels)
                 export_to_jams(file_struct, duration, est_times, est_labels)
@@ -193,7 +198,7 @@ if __name__ == '__main__':
 
     # save embeddings
     parser.add_argument('--save_embeddings', type=int, default=0)
-
+    parser.add_argument('--jsd_model', type=int, default=1)
     args = parser.parse_args()
 
     print(args)
