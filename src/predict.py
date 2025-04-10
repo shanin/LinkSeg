@@ -96,14 +96,14 @@ def predict_from_files(args):
     # define model
     model = load_model(args).to(device)
     print('Model name =', args.model_name)
-    print(model)
+    #print(model)
 
     tracklist = clean_tracklist_audio(args.test_data_path, annotations=False)#[::-1]
+    assert len(tracklist) > 0, "No tracks found in the test data path"
     pbar = tqdm(tracklist)
 
     with torch.inference_mode():  
         for file in pbar:
-            
             pbar.set_description(file)
             # load audio file
             file_struct = FileStruct(file)
@@ -123,8 +123,13 @@ def predict_from_files(args):
                 x = torch.tensor(features, device=device)
                 # compute the predictions
                 embeddings, bound_curve, class_curves, A_pred = model(x)
+                # save embeddings to numpy file
+                if args.save_embeddings:
+                    embeddings_file = str(file_struct.predictions_file).split('.jams')[0] + '_embeddings.npy'
+                    print('Saving embeddings to', embeddings_file)
+                    np.save(embeddings_file, embeddings.cpu().numpy())
                 # post-process predictions (peak picking & majority vote)
-                est_times, est_labels = post_process(file, beat_times, duration, bound_curve, class_curves, args.max_past, args.max_future, args.tau)
+                est_times, est_labels = post_process(file, beat_times, duration, bound_curve, class_curves)
                 # write predictions to jams format
                 print(est_times, est_labels)
                 export_to_jams(file_struct, duration, est_times, est_labels)
@@ -177,8 +182,8 @@ if __name__ == '__main__':
     parser.add_argument('--dropout_egat', type=float, default=.5)
 
     # peak-picking parameters
-    parser.add_argument('--max_past', type=float, default=8)
-    parser.add_argument('--max_future', type=float, default=8)
+    parser.add_argument('--max_past', type=float, default=15)
+    parser.add_argument('--max_future', type=float, default=15)
     parser.add_argument('--tau', type=float, default=0)
 
     # paths
@@ -186,8 +191,10 @@ if __name__ == '__main__':
     parser.add_argument('--model_name', type=str)
     parser.add_argument('--gpu', type=int, default=-1)
 
+    # save embeddings
+    parser.add_argument('--save_embeddings', type=int, default=0)
+
     args = parser.parse_args()
 
     print(args)
     predict_from_files(args)
-
