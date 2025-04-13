@@ -53,7 +53,8 @@ def load_model(args) -> LinkSeg:
                 dropout_egat=args.dropout_egat,
                 max_len=args.max_len)
 
-    print('Model path =', model_path)
+    if not args.silent:
+        print('Model path =', model_path)
 
     if '.ckpt' in model_path:
         model_path = torch.load(model_path)
@@ -63,7 +64,6 @@ def load_model(args) -> LinkSeg:
     new_state_dict = OrderedDict()
 
     for k, v in state_dict.items():
-
         name = k.split('network.')[-1]
         new_state_dict[name] = v
 
@@ -91,24 +91,27 @@ def predict_from_files(args):
         warnings.warn("You're trying to use the GPU but no GPU has been found. Using CPU instead...")
         gpu = -1
     device = torch.device(f"cuda:{gpu:d}" if gpu >= 0 else "cpu")
-    print(device)
+    if not args.silent:
+        print(device)
 
     # define model
     model = load_model(args).to(device)
-    print('Model name =', args.model_name)
-    #print(model)
+    if not args.silent:
+        print('Model name =', args.model_name)
 
-    tracklist = clean_tracklist_audio(args.test_data_path, annotations=False)#[::-1]
+    tracklist = clean_tracklist_audio(args.test_data_path, annotations=False)
     assert len(tracklist) > 0, "No tracks found in the test data path"
-    pbar = tqdm(tracklist)
+    pbar = tqdm(tracklist, disable=args.silent)
 
     with torch.inference_mode():  
         for file in pbar:
-            pbar.set_description(file)
+            if not args.silent:
+                pbar.set_description(file)
             # load audio file
             file_struct = FileStruct(file)
             if os.path.isfile(file_struct.predictions_file):
-                print('Predictions found, skipping')
+                if not args.silent:
+                    print('Predictions found, skipping')
                 continue
             else:
                 beat_frames, duration = read_beats(file_struct.beat_file)
@@ -123,20 +126,21 @@ def predict_from_files(args):
                 x = torch.tensor(features, device=device)
                 # compute the predictions
                 embeddings, bound_curve, class_curves, A_pred = model(x)
-                # save embeddings to numpy file
 
                 if args.save_embeddings:
                     # Create predictions subfolder if it doesn't exist
                     predictions_dir = os.path.dirname(file_struct.predictions_file)
                     os.makedirs(predictions_dir, exist_ok=True)
                     embeddings_file = str(file_struct.predictions_file).split('.jams')[0] + '_embeddings.npy'
-                    print('Saving embeddings to', embeddings_file)
+                    if not args.silent:
+                        print('Saving embeddings to', embeddings_file)
                     np.save(embeddings_file, embeddings.cpu().numpy())
 
                 # post-process predictions (peak picking & majority vote)
                 est_times, est_labels = post_process(file, beat_times, duration, bound_curve, class_curves, jsd_model=args.jsd_model)
                 # write predictions to jams format
-                print(est_times, est_labels)
+                if not args.silent:
+                    print(est_times, est_labels)
                 export_to_jams(file_struct, duration, est_times, est_labels)
 
 
@@ -199,7 +203,12 @@ if __name__ == '__main__':
     # save embeddings
     parser.add_argument('--save_embeddings', type=int, default=0)
     parser.add_argument('--jsd_model', type=int, default=1)
+    
+    # silent mode
+    parser.add_argument('--silent', action='store_true', help='Run in silent mode (no stdout output)')
+    
     args = parser.parse_args()
 
-    print(args)
+    if not args.silent:
+        print(args)
     predict_from_files(args)
