@@ -7,10 +7,11 @@ import torch
 import torchaudio
 import librosa
 import numpy as np
+import json
 
 from tqdm import tqdm
 from models import LinkSeg, FrameEncoder
-from post_processing import post_process, export_to_jams
+from post_processing import post_process, export_to_jams, export_to_jams_opt, indices_JSD
 from data_utils import read_beats, clean_tracklist_audio, FileStruct, downsample_frames
 
 
@@ -143,6 +144,98 @@ def predict_from_files(args):
                     print(est_times, est_labels)
                 export_to_jams(file_struct, duration, est_times, est_labels)
 
+def prepare_credits(credits):
+    instruments = [elem.replace('solo_', '').replace('_', ' ') for elem in list(indices_JSD.values())]
+    indexes = [0 for _ in range(len(instruments))]
+    for credit in credits:
+        roles = credit['role'].split(',')
+        for role in roles:
+            if role.lower() in instruments:
+                indexes[instruments.index(role.lower())] += 1
+    indexes[11] = 1 # silence
+    indexes[13] = 1 # vocals
+    indexes[14] = 1 # intro
+    indexes[21] = 1 # theme
+    indexes[23] = 1 # outro
+    return indexes
+
+def filter_class_curves(class_curves, credits=None):
+    if credits is None:
+        return class_curves
+    elif credits == []:
+        return None
+    else:
+        class_curves = class_curves * torch.tensor(credits, device=class_curves.device)
+        return class_curves
+
+def pipeline_predict(args):
+
+    output_dir = args.output_dir
+    beats_dir = args.beats_dir
+    metadata_dir = args.metadata_dir
+    gpu = args.gpu
+    if gpu >= 0 and not torch.cuda.is_available():
+        warnings.warn("You're trying to use the GPU but no GPU has been found. Using CPU instead...")
+        gpu = -1
+    device = torch.device(f"cuda:{gpu:d}" if gpu >= 0 else "cpu")
+    if not args.silent:
+        print(device)
+
+    # define model
+    model = load_model(args).to(device)
+    if not args.silent:
+        print('Model name =', args.model_name)
+
+    tracklist = os.listdir(args.test_data_path)
+    assert len(tracklist) > 0, "No tracks found in the test data path"
+
+    with torch.inference_mode():  
+        for file in tracklist:
+            # load audio file
+            target_file = os.path.join(output_dir, file.replace('.wav', '.jams'))
+            beats_file = os.path.join(beats_dir, file.replace('.wav', '.beats'))
+            metadata_file = os.path.join(metadata_dir, file.replace('.wav', '.metadata.json'))
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+            credits = prepare_credits(metadata['Discogs_Credits'])
+
+            if os.path.isfile(target_file):
+                if not args.silent:
+                    print('Predictions found, skipping')
+                continue
+            else:
+                beat_times = np.loadtxt(beats_file)[:, 0]
+                beat_frames = librosa.time_to_frames(beat_times, sr=22050, hop_length=256)
+                beat_frames = librosa.util.fix_frames(beat_frames)
+                beat_frames = downsample_frames(beat_frames, max_length=args.max_len)
+                beat_times = librosa.frames_to_time(beat_frames, sr=22050, hop_length=256)
+                beat_frames = librosa.time_to_frames(beat_times, sr=22050, hop_length=1)
+                pad_width = ((args.hop_length*args.n_embedding) - 2)//2 
+
+                audio_file = os.path.join(args.test_data_path, file)
+                waveform, _ = librosa.core.load(audio_file, sr=22050, mono=True)
+                duration = librosa.get_duration(y=waveform, sr=22050)
+                
+                features_padded = np.pad(waveform, pad_width=((pad_width, pad_width)), mode='edge')
+                features = np.stack([features_padded[i:i+pad_width*2] for i in beat_frames], axis=0)
+                x = torch.tensor(features, device=device)
+                # compute the predictions
+                embeddings, bound_curve, class_curves, A_pred = model(x)
+                class_curves = filter_class_curves(class_curves, credits)
+                if args.save_embeddings:
+                    # Create predictions subfolder if it doesn't exist
+                    os.makedirs(output_dir, exist_ok=True)
+                    embeddings_file = os.path.join(output_dir, file.replace('.wav', '_embeddings.npy'))
+                    if not args.silent:
+                        print('Saving embeddings to', embeddings_file)
+                    np.save(embeddings_file, embeddings.cpu().numpy())
+
+                # post-process predictions (peak picking & majority vote)
+                est_times, est_labels = post_process(file, beat_times, duration, bound_curve, class_curves, jsd_model=args.jsd_model)
+                # write predictions to jams format
+                if not args.silent:
+                    print(est_times, est_labels)
+                export_to_jams_opt(target_file, duration, est_times, est_labels)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -207,8 +300,14 @@ if __name__ == '__main__':
     # silent mode
     parser.add_argument('--silent', action='store_true', help='Run in silent mode (no stdout output)')
     
+    # for pipeline only
+    parser.add_argument('--metadata_dir', type=str, default='stages/0_fetch_metadata')
+    parser.add_argument('--beats_dir', type=str, default='stages/1_beat_tracking')
+    parser.add_argument('--output_dir', type=str, default='stages/2_linkseg_predictions')
+
     args = parser.parse_args()
 
     if not args.silent:
         print(args)
-    predict_from_files(args)
+    #predict_from_files(args)
+    pipeline_predict(args)

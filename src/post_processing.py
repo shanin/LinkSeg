@@ -163,7 +163,16 @@ def post_process(audio_file, beat_times, duration, bound_curve, class_curves, js
 
     return est_idxs, est_labels
     
-
+def export_to_jams_opt(predictions_file, duration, est_times, est_labels):
+    jam = jams.JAMS()
+    intervals = times_to_intervals(est_times)
+    jam.file_metadata.duration = duration
+    durations = [intervals[i,1]-intervals[i,0] for i in range(len(intervals))]
+    ann = jams.Annotation(namespace='segment_open', time=0, duration=duration)
+    for name, time, duration in zip(est_labels, est_times, durations):
+        ann.append(value=name, time=time, duration=duration, confidence=None)
+    jam.annotations.append(ann)
+    jam.save(predictions_file)
 
 def export_to_jams(file_struct, duration, est_times, est_labels):
     ds_path = file_struct.ds_path
