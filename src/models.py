@@ -1,7 +1,7 @@
 import torch
 import torchaudio
 from torch import nn
-from modules import *
+from .modules import *
 
 
 

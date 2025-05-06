@@ -10,9 +10,9 @@ import numpy as np
 import json
 
 from tqdm import tqdm
-from models import LinkSeg, FrameEncoder
-from post_processing import post_process, export_to_jams, export_to_jams_opt, indices_JSD
-from data_utils import read_beats, clean_tracklist_audio, FileStruct, downsample_frames
+from .models import LinkSeg, FrameEncoder
+from .post_processing import post_process, export_to_jams, export_to_jams_opt, indices_JSD
+from .data_utils import read_beats, clean_tracklist_audio, FileStruct, downsample_frames
 
 
 def load_model(args) -> LinkSeg:
@@ -144,16 +144,19 @@ def predict_from_files(args):
                     print(est_times, est_labels)
                 export_to_jams(file_struct, duration, est_times, est_labels)
 
-def prepare_credits(credits):
-    instruments = [elem.replace('solo_', '').replace('_', ' ') for elem in list(indices_JSD.values())]
-    indexes = [0 for _ in range(len(instruments))]
-    for credit in credits:
-        roles = credit['role'].split(',')
-        for role in roles:
-            if role.lower() in instruments:
-                indexes[instruments.index(role.lower())] += 1
+def prepare_credits(metadata):
+    instrument_credits = metadata['instruments']
+    instruments_classes = [elem.replace('solo_', '').replace('_', ' ') for elem in list(indices_JSD.values())]
+    indexes = [0 for _ in range(len(instruments_classes))]
+    for credit in instrument_credits:
+        if credit.lower() in instruments_classes:
+            indexes[instruments_classes.index(credit.lower())] = 1
+        if credit.lower() == 'saxophone (any)':
+            indexes[7] = 1
+            indexes[9] = 1
+            indexes[15] = 1
+            indexes[29] = 1
     indexes[11] = 1 # silence
-    indexes[13] = 1 # vocals
     indexes[14] = 1 # intro
     indexes[21] = 1 # theme
     indexes[23] = 1 # outro
@@ -186,6 +189,7 @@ def pipeline_predict(args):
     if not args.silent:
         print('Model name =', args.model_name)
 
+
     tracklist = os.listdir(args.test_data_path)
     assert len(tracklist) > 0, "No tracks found in the test data path"
 
@@ -193,11 +197,11 @@ def pipeline_predict(args):
         for file in tracklist:
             # load audio file
             target_file = os.path.join(output_dir, file.replace('.wav', '.jams'))
-            beats_file = os.path.join(beats_dir, file.replace('.wav', '.beats'))
+            beats_file = os.path.join(beats_dir, file.replace('.wav', '.beats.tsv'))
             metadata_file = os.path.join(metadata_dir, file.replace('.wav', '.metadata.json'))
             with open(metadata_file, 'r') as f:
                 metadata = json.load(f)
-            credits = prepare_credits(metadata['Discogs_Credits'])
+            credits = prepare_credits(metadata)
 
             if os.path.isfile(target_file):
                 if not args.silent:
@@ -222,9 +226,9 @@ def pipeline_predict(args):
                 # compute the predictions
                 embeddings, bound_curve, class_curves, A_pred = model(x)
                 class_curves = filter_class_curves(class_curves, credits)
+                # Create predictions subfolder if it doesn't exist
+                os.makedirs(output_dir, exist_ok=True)
                 if args.save_embeddings:
-                    # Create predictions subfolder if it doesn't exist
-                    os.makedirs(output_dir, exist_ok=True)
                     embeddings_file = os.path.join(output_dir, file.replace('.wav', '_embeddings.npy'))
                     if not args.silent:
                         print('Saving embeddings to', embeddings_file)

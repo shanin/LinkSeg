@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from EMA import EMA
+from .EMA import EMA
 from einops import rearrange
 import dgl
 
