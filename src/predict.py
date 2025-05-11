@@ -155,7 +155,7 @@ def prepare_credits(metadata):
             indexes[7] = 1
             indexes[9] = 1
             indexes[15] = 1
-            indexes[29] = 1
+            indexes[19] = 1
     indexes[11] = 1 # silence
     indexes[14] = 1 # intro
     indexes[21] = 1 # theme
