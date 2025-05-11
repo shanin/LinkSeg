@@ -194,7 +194,7 @@ def pipeline_predict(args):
     assert len(tracklist) > 0, "No tracks found in the test data path"
 
     with torch.inference_mode():  
-        for file in tqdm(tracklist):
+        for file in tracklist:
             # load audio file
             target_file = os.path.join(output_dir, file.replace('.wav', '.jams'))
             beats_file = os.path.join(beats_dir, file.replace('.wav', '.beats.tsv'))
