@@ -218,6 +218,10 @@ def pipeline_predict(args):
                 beat_frames = librosa.util.fix_frames(beat_frames)
                 beat_frames = downsample_frames(beat_frames, max_length=args.max_len)
                 beat_times = librosa.frames_to_time(beat_frames, sr=22050, hop_length=256)
+                if beat_times.ndim < 1:
+                    if not args.silent:
+                        print('Faulty beat file, skipping')
+                    continue
                 beat_frames = librosa.time_to_frames(beat_times, sr=22050, hop_length=1)
                 pad_width = ((args.hop_length*args.n_embedding) - 2)//2 
 
