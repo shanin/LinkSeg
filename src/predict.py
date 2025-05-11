@@ -208,7 +208,12 @@ def pipeline_predict(args):
                     print('Predictions found, skipping')
                 continue
             else:
-                beat_times = np.loadtxt(beats_file)[:, 0]
+                raw_beats = np.loadtxt(beats_file)
+                if raw_beats.ndim < 2:
+                    if not args.silent:
+                        print('Faulty beat file, skipping')
+                    continue
+                beat_times = raw_beats[:, 0]
                 beat_frames = librosa.time_to_frames(beat_times, sr=22050, hop_length=256)
                 beat_frames = librosa.util.fix_frames(beat_frames)
                 beat_frames = downsample_frames(beat_frames, max_length=args.max_len)
