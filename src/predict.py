@@ -234,6 +234,10 @@ def pipeline_predict(args):
                 x = torch.tensor(features, device=device)
                 # compute the predictions
                 embeddings, bound_curve, class_curves, A_pred = model(x)
+                if bound_curve.ndim < 1:
+                    if not args.silent:
+                        print('Faulty inference, probably short audio, skipping')
+                    continue
                 class_curves = filter_class_curves(class_curves, credits)
                 # Create predictions subfolder if it doesn't exist
                 os.makedirs(output_dir, exist_ok=True)
