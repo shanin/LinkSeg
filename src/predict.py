@@ -198,6 +198,10 @@ def pipeline_predict(args):
             # load audio file
             target_file = os.path.join(output_dir, file.replace('.wav', '.jams'))
             beats_file = os.path.join(beats_dir, file.replace('.wav', '.beats.tsv'))
+            if not os.path.isfile(beats_file):
+                if not args.silent:
+                    print('No beat file found, skipping')
+                continue
             metadata_file = os.path.join(metadata_dir, file.replace('.wav', '.metadata.json'))
             with open(metadata_file, 'r') as f:
                 metadata = json.load(f)
